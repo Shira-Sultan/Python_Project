@@ -1,5 +1,11 @@
 import ctypes
+import json
 import os
+import webbrowser
+
+from colorama import Fore
+from fastapi import requests
+
 import File
 import shutil
 
@@ -59,9 +65,6 @@ class Repository:
 
 
     def log(self):
-        # for commit_hash in self.dict_commits.items():
-        #     print(fr"{commit_hash}: {self.dict_commits[commit_hash]}")
-
         for key, value in self.dict_commits.items():
             print(f"hash_commit: {key}")
             print(f"date: {value.date}")
@@ -78,3 +81,53 @@ class Repository:
     def checkout(self, hash_commit):
         cur_commit_path = os.path.join(self.repo_path, '.wit', 'commits', hash_commit)
         File.clear_and_copy(cur_commit_path, self.repo_path)
+
+
+    def push(self):
+        url = 'http://localhost:8000/'
+
+        folders = [f for f in os.listdir(self.path_commiting) if os.path.isdir(os.path.join(self.path_commiting, f))]
+        if not folders:
+            print(Fore.RED + "No folders found in the commiting path")
+            return
+
+        folders = sorted(folders, key=lambda f: os.path.getmtime(os.path.join(self.path_commiting, f)))
+        last_commit = folders[-1]
+
+        folder_to_zip = os.path.join(self.path_commiting, last_commit)
+        zip_base = folder_to_zip
+        zip_path = zip_base + '.zip'
+
+        shutil.make_archive(base_name=zip_base, format='zip', root_dir=folder_to_zip)
+
+        try:
+            with open(zip_path, 'rb') as file:
+                files = {'file': ('MyFolder.zip', file, 'application/zip')}
+
+                # שליחת בקשה ל-alert
+                alert_resp = requests.post(url + 'alert', files=files)
+                if alert_resp.status_code == 200:
+                    alert_data = alert_resp.json()
+                    print(Fore.GREEN + "Alert response:")
+                    print(Fore.GREEN + json.dumps(alert_data, indent=4, ensure_ascii=False))
+                else:
+                    print(Fore.RED + f"Alert request failed: {alert_resp.status_code}")
+
+                file.seek(0)
+                files = {'file': ('MyFolder.zip', file, 'application/zip')}
+
+                # שליחת בקשה ל-analyze
+                graphs_resp = requests.post(url + 'analyze', files=files)
+                for i in graphs_resp:
+                    print(i)
+                if graphs_resp.status_code == 200:
+                    paths = graphs_resp.json()
+                    print(Fore.CYAN + "\nOpening graph images...")
+                    for path in paths:
+                        webbrowser.open(path)
+                else:
+                    print(Fore.RED + f"Graphs request failed: {graphs_resp.status_code}")
+
+        except Exception as e:
+            print(Fore.RED + f"An error occurred: {str(e)}")
+

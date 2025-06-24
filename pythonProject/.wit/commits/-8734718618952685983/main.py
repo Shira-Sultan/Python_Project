@@ -61,4 +61,3 @@ cli.add_command(push)
 if __name__ == '__main__':
     print("in my CLI...")
     cli()
-
